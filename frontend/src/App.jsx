@@ -1,16 +1,20 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { useEffect, useState } from "react";
+import Dashboard from "./pages/Dashboard";
+import { loadCSV } from "./utils/dataLoader";
+import { validateCSV } from "./utils/validator";
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [data, setData] = useState([]);
 
-  return (
-    <>
-      
-    </>
-  )
+  useEffect(() => {
+    fetch("/mass_balance_synthetic_dataset.csv")
+      .then((res) => res.text())
+      .then((text) => loadCSV(new File([text], "default.csv")))
+      .then((rows) => setData(rows));
+  }, []);
+
+  return <Dashboard data={data} />;
 }
 
-export default App
+export default App;
+
