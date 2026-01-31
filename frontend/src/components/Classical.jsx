@@ -1,67 +1,162 @@
-import { ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ReferenceLine, BarChart, Bar } from 'recharts';
 
+import React, { useMemo } from "react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  ScatterChart,
+  Scatter,
+  ReferenceLine,
+  Legend
+} from "recharts";
+import { TrendingUp, Activity, AlertCircle } from "lucide-react";
+
+/**
+ * Classical Metrics Section
+ * 3. AMB Distribution
+ * 4. RMBD Distribution
+ * 5. AMB vs RMBD Scatter
+ */
 export default function Classical({ data }) {
-  if (!data || data.length === 0) return null;
 
-  // Prepare data for Scatter Plot (Initial vs Stressed Mass)
-  const scatterData = data.map((d, i) => ({
-    id: i,
-    initial: (d.initial_API || 0) + (d.initial_deg || 0),
-    stressed: d.metrics?.SMB || 0,
-    stressType: d.stress
-  }));
+  // 3. AMB Distribution
+  const ambData = useMemo(() => {
+    if (!data) return [];
+    const bins = {};
+    const binSize = 2;
+    // Range 60 to 120 maybe? AMB is usually around 100
+    data.forEach(row => {
+      if (!row.metrics || row.metrics.AMB === null) return;
+      const val = row.metrics.AMB;
+      if (val < 50 || val > 150) return; // limit outliers for view
+      const bin = Math.floor(val / binSize) * binSize;
+      if (!bins[bin]) bins[bin] = { x: bin, count: 0 };
+      bins[bin].count++;
+    });
+    return Object.values(bins).sort((a, b) => a.x - b.x);
+  }, [data]);
 
-  // Prepare data for Bar Chart (Average AMB by Stress Type)
-  const stressTypes = [...new Set(data.map(d => d.stress))];
-  const barData = stressTypes.map(type => {
-    const subset = data.filter(d => d.stress === type);
-    const avgAMB = subset.reduce((acc, curr) => acc + (curr.metrics?.AMB || 0), 0) / subset.length;
-    return { name: type, AMB: parseFloat(avgAMB.toFixed(2)) };
-  });
+  // 4. RMBD Distribution
+  const rmbdData = useMemo(() => {
+    if (!data) return [];
+    const bins = {};
+    const binSize = 0.1;
+    data.forEach(row => {
+      if (!row.metrics || row.metrics.RMBD === null) return;
+      const val = row.metrics.RMBD;
+      // RMBD usually 0 to 2? or negative? Assuming 0-1ish mostly, but can be higher.
+      if (val < -1 || val > 3) return;
+      // Round to 1 decimal
+      const bin = Math.floor(val * 10) / 10;
+      if (!bins[bin]) bins[bin] = { x: bin, count: 0 };
+      bins[bin].count++;
+    });
+    return Object.values(bins).sort((a, b) => a.x - b.x);
+  }, [data]);
+
+  // 5. AMB vs RMBD Scatter (Sampled to avoid 4000 points lag)
+  const scatterData = useMemo(() => {
+    if (!data) return [];
+    // downsample randomly if too big
+    return data.filter(() => Math.random() < 0.5).map(row => ({
+      x: row.metrics.AMB,
+      y: row.metrics.RMBD,
+      zone: row.level
+    }));
+  }, [data]);
+
+  const lowZone = scatterData.filter(d => d.zone === 'low');
+  const midZone = scatterData.filter(d => d.zone === 'mid');
+  const highZone = scatterData.filter(d => d.zone === 'high');
 
   return (
-    <section className="mb-12">
-      <h2 className="text-2xl font-bold mb-6 text-white">Classical Mass Balance</h2>
+    <div className="space-y-8">
+      <div className="flex items-center space-x-4 mb-6">
+        <div className="p-3 rounded-full bg-indigo-500/10 text-indigo-400">
+          <TrendingUp size={24} />
+        </div>
+        <div>
+          <h2 className="text-3xl font-bold text-gray-100">Classical Metrics</h2>
+          <p className="text-gray-400">Baseline analysis - "What the industry sees"</p>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
 
-        {/* Scatter Chart */}
-        <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700/50 p-6 rounded-xl">
-          <h3 className="text-lg font-semibold mb-4 text-gray-200">Stressed vs. Initial Mass</h3>
-          <div className="h-[300px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                <XAxis type="number" dataKey="initial" name="Initial Mass" unit="%" stroke="#9ca3af" domain={[90, 110]} />
-                <YAxis type="number" dataKey="stressed" name="Stressed Mass" unit="%" stroke="#9ca3af" domain={[90, 110]} />
-                <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#f3f4f6' }} />
-                <ReferenceLine y={100} stroke="#ef4444" strokeDasharray="3 3" />
-                <ReferenceLine x={100} stroke="#ef4444" strokeDasharray="3 3" />
-                {/* Ideal Line x=y roughly translates to 100,100 center */}
-                <Scatter name="Runs" data={scatterData} fill="#8b5cf6" />
-              </ScatterChart>
-            </ResponsiveContainer>
+        {/* AMB Distribution */}
+        <div className="bg-gray-900/50 border border-gray-800 rounded-3xl p-6 backdrop-blur-xl">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-xl font-bold text-gray-200">AMB Distribution</h3>
+            <span className="text-xs font-mono text-green-400 bg-green-400/10 px-2 py-1 rounded">Target: 95-105%</span>
           </div>
-        </div>
-
-        {/* Bar Chart */}
-        <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700/50 p-6 rounded-xl">
-          <h3 className="text-lg font-semibold mb-4 text-gray-200">Average AMB by Stress Condition</h3>
-          <div className="h-[300px] w-full">
+          <div className="h-64 w-full" style={{ width: '100%', height: 256 }}>
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={barData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                <XAxis dataKey="name" stroke="#9ca3af" />
-                <YAxis stroke="#9ca3af" domain={[90, 110]} />
-                <Tooltip contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#f3f4f6' }} />
-                <ReferenceLine y={95} stroke="#ef4444" label="Lower Limit" />
-                <ReferenceLine y={105} stroke="#ef4444" label="Upper Limit" />
-                <Bar dataKey="AMB" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+              <BarChart data={ambData} barCategoryGap={1}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
+                <XAxis dataKey="x" stroke="#9CA3AF" tickFormatter={(v) => `${v}%`} />
+                <YAxis stroke="#9CA3AF" />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151' }}
+                  labelFormatter={(v) => `AMB: ${v}%`}
+                />
+                {/* Reference Band imitation with ReferenceLine? hard for band. Just line at 95 and 105 */}
+                <ReferenceLine x={95} stroke="#10B981" strokeDasharray="3 3" label={{ value: 'Lower', fill: '#10B981', fontSize: 10 }} />
+                <ReferenceLine x={105} stroke="#10B981" strokeDasharray="3 3" label={{ value: 'Upper', fill: '#10B981', fontSize: 10 }} />
+                <Bar dataKey="count" fill="#818CF8" name="Count" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
+          <p className="mt-2 text-sm text-gray-500 italic">"This is what industry normally looks at - mostly passing."</p>
+        </div>
+
+        {/* RMBD Distribution */}
+        <div className="bg-gray-900/50 border border-gray-800 rounded-3xl p-6 backdrop-blur-xl">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-xl font-bold text-gray-200">RMBD Distribution</h3>
+            <span className="text-xs font-mono text-gray-400 bg-gray-700/30 px-2 py-1 rounded">Wide Spread</span>
+          </div>
+          <div className="h-64 w-full" style={{ width: '100%', height: 256 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={rmbdData} barCategoryGap={1}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
+                <XAxis dataKey="x" stroke="#9CA3AF" />
+                <YAxis stroke="#9CA3AF" />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151' }}
+                  labelFormatter={(v) => `RMBD: ${v}`}
+                />
+                <Bar dataKey="count" fill="#F472B6" name="Count" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <p className="mt-2 text-sm text-gray-500 italic">"Same dataset, very different story. High variability hidden."</p>
         </div>
 
       </div>
-    </section>
+
+      {/* AMBD vs RMBD */}
+      <div className="bg-gray-900/50 border border-gray-800 rounded-3xl p-6 backdrop-blur-xl">
+        <h3 className="text-xl font-bold text-gray-200 mb-4">Correlation Check: AMBD vs RMBD</h3>
+        <div className="h-80 w-full" style={{ width: '100%', height: 320 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
+              <XAxis type="number" dataKey="x" name="AMB" unit="%" stroke="#9CA3AF" domain={[80, 120]} />
+              <YAxis type="number" dataKey="y" name="RMBD" stroke="#9CA3AF" domain={[-1, 2]} />
+              <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151' }} />
+              <Legend />
+              <Scatter name="Low Zone" data={lowZone} fill="#10B981" shape="circle" />
+              <Scatter name="Mid Zone" data={midZone} fill="#F59E0B" shape="triangle" />
+              <Scatter name="High Zone" data={highZone} fill="#EF4444" shape="square" />
+            </ScatterChart>
+          </ResponsiveContainer>
+        </div>
+        <p className="mt-2 text-center text-gray-500 italic">"Weak correlation proves single metric failure."</p>
+      </div>
+    </div>
   );
 }
